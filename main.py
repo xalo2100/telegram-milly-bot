@@ -8,17 +8,28 @@ from aiogram.enums import ChatAction
 from openai import OpenAI
 from dotenv import load_dotenv
 
-# Cargar variables locales
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-MODEL_NAME = os.getenv("MODEL_NAME", "particle-ai/particle-1:free")
 VIP_CHANNEL_LINK = os.getenv("VIP_CHANNEL_LINK", "https://t.me/tu_canal_vip")
 PRICE_TEXT = os.getenv("PRICE_TEXT", "15 USDT")
-PORT = int(os.getenv("PORT", 10000))
+PORT = int(os.getenv("PORT", 8080))
+
+# Lista de modelos gratuitos con fallback automático
+FALLBACK_MODELS = [
+    os.getenv("MODEL_NAME", "particle-ai/particle-1:free"),
+    "dots-studio/dots-3-note-preview:free",
+    "recursive/flint-v1.0:free",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+]
+
+if not TELEGRAM_BOT_TOKEN:
+    logging.error("ERROR CRÍTICO: Falta la variable TELEGRAM_BOT_TOKEN.")
+if not OPENROUTER_API_KEY:
+    logging.error("ERROR CRÍTICO: Falta la variable OPENROUTER_API_KEY en las variables de entorno.")
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN or "dummy_token")
 dp = Dispatcher()
@@ -26,6 +37,10 @@ dp = Dispatcher()
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=OPENROUTER_API_KEY or "dummy_key",
+    default_headers={
+        "HTTP-Referer": "https://github.com/xalo2100/telegram-milly-bot",
+        "X-Title": "Milly Bot"
+    }
 )
 
 SYSTEM_PROMPT = """
@@ -42,7 +57,7 @@ REGLAS CRÍTICAS DE CONVERSACIÓN:
 """
 
 conversation_history = {}
-MAX_HISTORY = 10
+MAX_HISTORY = 8
 
 def get_history(user_id: int):
     if user_id not in conversation_history:
@@ -64,7 +79,7 @@ async def start_handler(message: types.Message):
 @dp.message(Command("vip"))
 async def vip_handler(message: types.Message):
     await message.answer(
-        f"Amor, en mi canal privado VIP subo todo lo que no puedo mostrar por acá... fotos y videos exclusivos sin censura 🔥\n\n"
+        f"Amor, en mi canal privado VIP subo todo lo que no puedo mostrar acá... fotos y videos exclusivos sin censura 🔥\n\n"
         f"La suscripción mensual es de solo {PRICE_TEXT}.\n"
         f"Para entrar y ver todo, entra aquí: {VIP_CHANNEL_LINK} o avísame para darte acceso directo."
     )
@@ -83,19 +98,29 @@ async def chat_handler(message: types.Message):
 
     await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
 
-    try:
-        response = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=history,
-            max_tokens=140,
-            temperature=0.85,
-        )
-        bot_reply = response.choices[0].message.content.strip()
+    # Intentar con la lista de modelos gratuitos hasta que uno responda
+    bot_reply = None
+    for model_name in FALLBACK_MODELS:
+        try:
+            logging.info(f"Probando modelo: {model_name} para usuario {user_id}")
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=history,
+                max_tokens=140,
+                temperature=0.85,
+            )
+            candidate_reply = response.choices[0].message.content
+            if candidate_reply and candidate_reply.strip():
+                bot_reply = candidate_reply.strip()
+                break
+        except Exception as e:
+            logging.warning(f"Fallo temporal en {model_name}: {e}")
+
+    if bot_reply:
         history.append({"role": "assistant", "content": bot_reply})
         await message.answer(bot_reply)
-
-    except Exception as e:
-        logging.error(f"Error al procesar mensaje con OpenRouter: {e}")
+    else:
+        logging.error("Todos los modelos gratuitos fallaron o no devolvieron contenido.")
         await message.answer("Uff amor, se me tildó el teléfono un segundo... ¿qué me decías? 🙈")
 
 async def health_check(request):
@@ -112,10 +137,10 @@ async def start_web_server():
 
 async def main():
     if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "dummy_token":
-        print("ERROR: Falta TELEGRAM_BOT_TOKEN.")
+        logging.error("No se puede iniciar el bot: Falta TELEGRAM_BOT_TOKEN.")
         return
         
-    print(f"Iniciando bot Milly (@Milly_Senbot) con OpenRouter ({MODEL_NAME})...")
+    logging.info("Iniciando bot Milly (@Milly_Senbot)...")
     await asyncio.gather(
         start_web_server(),
         dp.start_polling(bot)
