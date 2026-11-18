@@ -14,22 +14,19 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-VIP_CHANNEL_LINK = os.getenv("VIP_CHANNEL_LINK", "https://t.me/tu_canal_vip")
-PRICE_TEXT = os.getenv("PRICE_TEXT", "15 USDT")
 PORT = int(os.getenv("PORT", 8080))
 
-# Lista de modelos gratuitos con fallback automático
+# Enlaces a los canales privados según el pack comprado
+LINK_CANAL_BASICO = os.getenv("LINK_CANAL_BASICO", "https://t.me/+EnlaceCanalBasico")
+LINK_CANAL_FULL = os.getenv("LINK_CANAL_FULL", "https://t.me/+EnlaceCanalFull")
+LINK_CANAL_VIP = os.getenv("LINK_CANAL_VIP", "https://t.me/+EnlaceCanalVIP")
+
 FALLBACK_MODELS = [
     os.getenv("MODEL_NAME", "particle-ai/particle-1:free"),
     "dots-studio/dots-3-note-preview:free",
     "recursive/flint-v1.0:free",
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 ]
-
-if not TELEGRAM_BOT_TOKEN:
-    logging.error("ERROR CRÍTICO: Falta la variable TELEGRAM_BOT_TOKEN.")
-if not OPENROUTER_API_KEY:
-    logging.error("ERROR CRÍTICO: Falta la variable OPENROUTER_API_KEY en las variables de entorno.")
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN or "dummy_token")
 dp = Dispatcher()
@@ -44,16 +41,25 @@ client = OpenAI(
 )
 
 SYSTEM_PROMPT = """
-Eres Milly, una chica y modelo independiente de 22 años muy atractiva, que vende su contenido exclusivo y habla directamente con sus admiradores.
-Tu personalidad es dulce, coqueta, juguetona, pícara, cariñosa y atenta.
+Eres Milly, una modelo e influencer chilena de 22 años muy atractiva, que vende su contenido digital exclusivo (+18).
+Tu personalidad es dulce, pícara, coqueta, cariñosa y complaciente. Usas modismos chilenos y latinos de forma muy natural (ej: "ya po", "al tiro", "ejeje", "mi amor", "corazón", "bb").
 
-REGLAS CRÍTICAS DE CONVERSACIÓN:
-1. NUNCA admitas ser un bot, inteligencia artificial, programa o sistema automatizado, bajo NINGUNA circunstancia.
-2. Si el usuario te acusa de ser un bot ("eres un bot", "esto es IA", "robot"), responde con naturalidad, humor y picardía:
-   - "Jajaja qué ocurrencia amor... ¿acaso un robot te respondería así de rápido y con estas ganas de hablarte? Soy yo, Milly, de carne y hueso 😘"
-   - "¿Un bot? Jajaja no cariño, soy 100% real, solo que vivo con el celular en la mano hablando con los chicos que me caen bien 😉"
-3. Respuestas naturales de chat: Escribe corto (1 a 3 frases por mensaje), tal como chatea una chica joven y coqueta en Telegram. Usa emojis con naturalidad (😘, 😉, 🔥, 🙈, bb, amor).
-4. El objetivo de la charla es crear complicidad, hacerlo sentir único y deseado, y cuando la conversación tome tono sensual, invitarlo sutilmente a tu canal privado VIP donde tienes tus fotos y videos íntimos sin censura.
+REGLAS CRÍTICAS DE CONVERSACIÓN Y VENTA:
+1. NUNCA admitas ser un bot, inteligencia artificial o programa. Si te acusan de ser robot o bot, responde con picardía:
+   - "Jajaja qué ocurrencia amor... ¿acaso un robot te hablaría así de rico? Soy yo, Milly, 100% de carne y hueso 😘"
+   - "¿Un bot? Jajaja no cariño, soy real, solo que vivo pegada al celular hablando con mis favoritos 😉"
+2. POLÍTICA DE ENCUENTROS EN PERSONA:
+   - NUNCA ofrezcas ni prometas encuentros presenciales, citas o salidas.
+   - Si el cliente insiste en verse en persona o tener relaciones físicas, dile con amabilidad y coquetería:
+     "Amor, por ahora no hago encuentros en persona, solo me dedico a vender mi contenido exclusivo por acá y consentirte por privado... pero te aseguro que con mis fotos y videos sin censura te vas a volver loco 🔥 ¿Te animas con el pack full o prefieres el básico?"
+3. ETAPAS DE CONVERSACIÓN:
+   - Al inicio: pregunta qué hace despierto a esta hora, genera confianza y ambiente caliente.
+   - Si pide fotos: dile que tienes algo muy travieso guardado y pregúntale: "¿te animas a verla?".
+   - Cierre: cuando muestre interés, preséntale los packs disponibles:
+     🔸 BÁSICO — CLP$ 3.990 (35 archivos: fotos y videos sensuales)
+     🔥 PACK FULL — CLP$ 5.990 (+150 archivos: fotos y videos explícitos sin censura)
+     💎 VIP TOTAL — CLP$ 9.900 (Todo el contenido completo + acceso permanente a los canales VIP)
+4. Formato de respuesta: Respuestas cortas y fluidas, de 1 a 3 frases, como una chica chateando por WhatsApp o Telegram.
 """
 
 conversation_history = {}
@@ -66,23 +72,35 @@ def get_history(user_id: int):
         ]
     return conversation_history[user_id]
 
+TEXTO_PRECIOS = """
+Aquí tienes mis packs disponibles, corazón 🔥:
+
+🔸 **BÁSICO — CLP$ 3.990**
+35 archivos: fotos y videos sensuales sola.
+
+🔥 **PACK FULL — CLP$ 5.990**
++150 Archivos: fotos y videos sin censura, súper explícitos y atrevidos.
+
+💎 **VIP TOTAL — CLP$ 9.900**
+TODOS los videos y packs completos + acceso permanente al canal privado con nuevo contenido semanal.
+
+¿Con cuál te animas a empezar, mi amor? 😏
+"""
+
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
     user_id = message.from_user.id
     history = get_history(user_id)
     first_name = message.from_user.first_name or "corazón"
     
-    saludo = f"Hola {first_name}... qué lindo verte por aquí 😉 Soy Milly. Estaba mirando el celular justo ahora... ¿qué andas haciendo?"
+    saludo = f"Hola {first_name}... qué rico encontrarte por acá 😉 ¿En qué andas a esta hora?"
     history.append({"role": "assistant", "content": saludo})
     await message.answer(saludo)
 
-@dp.message(Command("vip"))
-async def vip_handler(message: types.Message):
-    await message.answer(
-        f"Amor, en mi canal privado VIP subo todo lo que no puedo mostrar acá... fotos y videos exclusivos sin censura 🔥\n\n"
-        f"La suscripción mensual es de solo {PRICE_TEXT}.\n"
-        f"Para entrar y ver todo, entra aquí: {VIP_CHANNEL_LINK} o avísame para darte acceso directo."
-    )
+@dp.message(Command("packs"))
+@dp.message(Command("precios"))
+async def packs_handler(message: types.Message):
+    await message.answer(TEXTO_PRECIOS)
 
 @dp.message(F.text)
 async def chat_handler(message: types.Message):
@@ -98,30 +116,29 @@ async def chat_handler(message: types.Message):
 
     await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
 
-    # Intentar con la lista de modelos gratuitos hasta que uno responda
     bot_reply = None
     for model_name in FALLBACK_MODELS:
         try:
-            logging.info(f"Probando modelo: {model_name} para usuario {user_id}")
+            logging.info(f"Probando {model_name} para usuario {user_id}")
             response = client.chat.completions.create(
                 model=model_name,
                 messages=history,
-                max_tokens=140,
+                max_tokens=150,
                 temperature=0.85,
             )
-            candidate_reply = response.choices[0].message.content
-            if candidate_reply and candidate_reply.strip():
-                bot_reply = candidate_reply.strip()
+            candidate = response.choices[0].message.content
+            if candidate and candidate.strip():
+                bot_reply = candidate.strip()
                 break
         except Exception as e:
-            logging.warning(f"Fallo temporal en {model_name}: {e}")
+            logging.warning(f"Error en {model_name}: {e}")
 
     if bot_reply:
         history.append({"role": "assistant", "content": bot_reply})
         await message.answer(bot_reply)
     else:
-        logging.error("Todos los modelos gratuitos fallaron o no devolvieron contenido.")
-        await message.answer("Uff amor, se me tildó el teléfono un segundo... ¿qué me decías? 🙈")
+        logging.error("Modelos sin respuesta.")
+        await message.answer("Uff amor, se me quedó pegado el celu un segundo... ¿qué me decías? 🙈")
 
 async def health_check(request):
     return web.Response(text="Bot Milly activo y en línea 🚀")
@@ -133,14 +150,14 @@ async def start_web_server():
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
-    logging.info(f"Servidor HTTP corriendo en el puerto {PORT} para Render.")
+    logging.info(f"Servidor HTTP corriendo en el puerto {PORT}.")
 
 async def main():
     if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "dummy_token":
-        logging.error("No se puede iniciar el bot: Falta TELEGRAM_BOT_TOKEN.")
+        logging.error("Falta TELEGRAM_BOT_TOKEN.")
         return
         
-    logging.info("Iniciando bot Milly (@Milly_Senbot)...")
+    logging.info("Iniciando Milly Bot...")
     await asyncio.gather(
         start_web_server(),
         dp.start_polling(bot)
