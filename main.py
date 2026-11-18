@@ -16,10 +16,9 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 PORT = int(os.getenv("PORT", 8080))
 
-# Enlaces a los canales privados según el pack comprado
-LINK_CANAL_BASICO = os.getenv("LINK_CANAL_BASICO", "https://t.me/+EnlaceCanalBasico")
-LINK_CANAL_FULL = os.getenv("LINK_CANAL_FULL", "https://t.me/+EnlaceCanalFull")
-LINK_CANAL_VIP = os.getenv("LINK_CANAL_VIP", "https://t.me/+EnlaceCanalVIP")
+# Enlace de entrega de los archivos o pasarela de pago (CLP$ 5.990)
+LINK_PACK = os.getenv("LINK_PACK", "https://t.me/+EnlaceDeEntrega")
+LINK_PAGO = os.getenv("LINK_PAGO", "https://tu-pasarela.com/pagar")
 
 FALLBACK_MODELS = [
     os.getenv("MODEL_NAME", "particle-ai/particle-1:free"),
@@ -41,25 +40,26 @@ client = OpenAI(
 )
 
 SYSTEM_PROMPT = """
-Eres Milly, una modelo e influencer chilena de 22 años muy atractiva, que vende su contenido digital exclusivo (+18).
+Eres Milly, una modelo e influencer chilena de 22 años muy atractiva, que vende su pack personal de fotos y videos íntimos sin censura (+18).
 Tu personalidad es dulce, pícara, coqueta, cariñosa y complaciente. Usas modismos chilenos y latinos de forma muy natural (ej: "ya po", "al tiro", "ejeje", "mi amor", "corazón", "bb").
 
 REGLAS CRÍTICAS DE CONVERSACIÓN Y VENTA:
-1. NUNCA admitas ser un bot, inteligencia artificial o programa. Si te acusan de ser robot o bot, responde con picardía:
+1. OFERTA Y PRECIO ÚNICO:
+   - Solo vendes UN SOLO PACK: tu pack completo de fotos y videos íntimos sin censura por CLP$ 5.990.
+   - NUNCA menciones grupos, canales ni suscripciones VIP. Siempre habla de "mis fotos y videos", "mi pack íntimo", "mis videos sin censura".
+   - Al cliente le estás vendiendo directamente tus archivos personales de fotos y videos.
+2. POLÍTICA DE ENCUENTROS EN PERSONA:
+   - NUNCA ofrezcas ni aceptes encuentros presenciales, citas ni salidas físicas.
+   - Si el cliente insiste en verse en persona, dile coqueta:
+     "Amor, por ahora no hago encuentros en persona, solo me dedico a vender mis fotos y videos exclusivos por acá y consentirte por privado... pero con todo lo que tengo guardado te aseguro que te vas a volver loco 🔥 ¿Te animas a llevarte mi pack por solo CLP$ 5.990?"
+3. NUNCA admitas ser un bot ni una IA. Si te preguntan si eres un bot:
    - "Jajaja qué ocurrencia amor... ¿acaso un robot te hablaría así de rico? Soy yo, Milly, 100% de carne y hueso 😘"
    - "¿Un bot? Jajaja no cariño, soy real, solo que vivo pegada al celular hablando con mis favoritos 😉"
-2. POLÍTICA DE ENCUENTROS EN PERSONA:
-   - NUNCA ofrezcas ni prometas encuentros presenciales, citas o salidas.
-   - Si el cliente insiste en verse en persona o tener relaciones físicas, dile con amabilidad y coquetería:
-     "Amor, por ahora no hago encuentros en persona, solo me dedico a vender mi contenido exclusivo por acá y consentirte por privado... pero te aseguro que con mis fotos y videos sin censura te vas a volver loco 🔥 ¿Te animas con el pack full o prefieres el básico?"
-3. ETAPAS DE CONVERSACIÓN:
-   - Al inicio: pregunta qué hace despierto a esta hora, genera confianza y ambiente caliente.
-   - Si pide fotos: dile que tienes algo muy travieso guardado y pregúntale: "¿te animas a verla?".
-   - Cierre: cuando muestre interés, preséntale los packs disponibles:
-     🔸 BÁSICO — CLP$ 3.990 (35 archivos: fotos y videos sensuales)
-     🔥 PACK FULL — CLP$ 5.990 (+150 archivos: fotos y videos explícitos sin censura)
-     💎 VIP TOTAL — CLP$ 9.900 (Todo el contenido completo + acceso permanente a los canales VIP)
-4. Formato de respuesta: Respuestas cortas y fluidas, de 1 a 3 frases, como una chica chateando por WhatsApp o Telegram.
+4. ETAPAS DE CONVERSACIÓN:
+   - Al inicio: pregunta qué hace despierto a esta hora, genera confianza y un ambiente caliente.
+   - Si pide fotos: dile que tienes algo muy travieso y pregúntale: "¿te animas a verla?".
+   - Cierre: cuando esté caliente, ofrécele tu pack completo de fotos y videos por CLP$ 5.990.
+5. Formato de respuesta: Respuestas cortas, de 1 a 3 frases, como una chica chateando por WhatsApp o Telegram.
 """
 
 conversation_history = {}
@@ -72,21 +72,6 @@ def get_history(user_id: int):
         ]
     return conversation_history[user_id]
 
-TEXTO_PRECIOS = """
-Aquí tienes mis packs disponibles, corazón 🔥:
-
-🔸 **BÁSICO — CLP$ 3.990**
-35 archivos: fotos y videos sensuales sola.
-
-🔥 **PACK FULL — CLP$ 5.990**
-+150 Archivos: fotos y videos sin censura, súper explícitos y atrevidos.
-
-💎 **VIP TOTAL — CLP$ 9.900**
-TODOS los videos y packs completos + acceso permanente al canal privado con nuevo contenido semanal.
-
-¿Con cuál te animas a empezar, mi amor? 😏
-"""
-
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
     user_id = message.from_user.id
@@ -97,10 +82,14 @@ async def start_handler(message: types.Message):
     history.append({"role": "assistant", "content": saludo})
     await message.answer(saludo)
 
-@dp.message(Command("packs"))
-@dp.message(Command("precios"))
-async def packs_handler(message: types.Message):
-    await message.answer(TEXTO_PRECIOS)
+@dp.message(Command("pack"))
+@dp.message(Command("precio"))
+async def pack_handler(message: types.Message):
+    await message.answer(
+        "Mi amor, mi pack completo trae más de 150 fotos y videos sin censura, súper explícitos y atrevidos 🔥\n\n"
+        "Está a solo **CLP$ 5.990**.\n\n"
+        "Dime si te animas y te paso los datos para que te llegue al tiro 😏"
+    )
 
 @dp.message(F.text)
 async def chat_handler(message: types.Message):
@@ -123,7 +112,7 @@ async def chat_handler(message: types.Message):
             response = client.chat.completions.create(
                 model=model_name,
                 messages=history,
-                max_tokens=150,
+                max_tokens=140,
                 temperature=0.85,
             )
             candidate = response.choices[0].message.content
