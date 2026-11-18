@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/llama-3.2-3b-instruct:free")
+MODEL_NAME = os.getenv("MODEL_NAME", "particle-ai/particle-1:free")
 VIP_CHANNEL_LINK = os.getenv("VIP_CHANNEL_LINK", "https://t.me/tu_canal_vip")
 PRICE_TEXT = os.getenv("PRICE_TEXT", "15 USDT")
 PORT = int(os.getenv("PORT", 10000))
