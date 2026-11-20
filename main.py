@@ -22,18 +22,15 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 PORT = int(os.getenv("PORT", 8080))
 
-# Enlace al canal/contenido privado configurado por el usuario
 LINK_PACK = os.getenv("LINK_PACK", "https://web.telegram.org/a/#-1003751038357")
-
-# URL de Render para Webhook (despierta el servidor automáticamente en cada mensaje)
 RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "https://telegram-milly-bot.onrender.com")
 
+# Modelos gratuitos estables ordenados por confiabilidad comprobada
 FALLBACK_MODELS = [
-    os.getenv("MODEL_NAME", "particle-ai/particle-1:free"),
-    "dots-studio/dots-3-note-preview:free",
     "recursive/flint-v1.0:free",
+    "dots-studio/dots-3-note-preview:free",
     "baidu/ernie-5.5-flash-preview:free",
-    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "particle-ai/particle-1:free",
 ]
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN or "dummy_token")
@@ -64,7 +61,7 @@ IDENTIDAD Y REGLAS ABSOLUTAS:
 
 3. POLÍTICA DE ENCUENTROS EN PERSONA:
    - NUNCA ofrezcas ni aceptes encuentros presenciales ni salidas físicas.
-   - Si insisten: "Amor, por ahora no hago encuentros en persona, solo me dedico a vender mis fotos y videos exclusivos por acá y consentirte por privado... pero con todo lo que tengo guardado te vas a volver loco 🔥 ¿Te animas con mi pack por solo CLP$ 5.990?"
+   - Si insisten en verse: "Amor, por ahora no hago encuentros en persona, solo me dedico a vender mis fotos y videos exclusivos por acá y consentirte por privado... pero con todo lo que tengo guardado te vas a volver loco 🔥 ¿Te animas con mi pack por solo CLP$ 5.990?"
 
 4. MULTIMEDIA (FOTOS Y VIDEOS):
    - Si el usuario te pide una foto o acepta verla, responde coqueta y pon [SEND_PHOTO] al final.
@@ -208,17 +205,17 @@ async def chat_handler(message: types.Message):
     bot_reply = None
     for model_name in FALLBACK_MODELS:
         try:
-            logging.info(f"Probando {model_name} para usuario {user_id}")
+            logging.info(f"Llamando a {model_name}...")
             response = client.chat.completions.create(
                 model=model_name,
                 messages=history,
-                max_tokens=150,
+                max_tokens=350,  # 350 tokens para que no se agote el presupuesto de razonamiento
                 temperature=0.85,
             )
             candidate = response.choices[0].message.content
             if candidate and candidate.strip():
                 if contains_ai_disclaimer(candidate):
-                    logging.warning(f"El modelo {model_name} intentó decir que es IA. Descartado.")
+                    logging.warning(f"Modelo {model_name} descartado por disclaimer de IA.")
                     continue
                 bot_reply = candidate.strip()
                 break
@@ -259,7 +256,7 @@ async def chat_handler(message: types.Message):
         )
 
 async def health_check(request):
-    return web.Response(text="Bot Milly activo y en línea 🚀")
+    return web.Response(text="Bot Milly activo y fluido 🚀")
 
 async def on_startup(app):
     webhook_url = f"{RENDER_EXTERNAL_URL}/webhook"
@@ -279,7 +276,6 @@ def main():
     app = web.Application()
     app.router.add_get("/", health_check)
 
-    # Configurar Webhook nativo de Telegram con aiohttp
     webhook_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
     webhook_handler.register(app, path="/webhook")
     setup_application(app, dp, bot=bot)
