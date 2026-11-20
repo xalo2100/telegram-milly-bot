@@ -7,6 +7,7 @@ from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.enums import ChatAction
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -20,6 +21,12 @@ MEDIA_DIR = BASE_DIR / "media"
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 PORT = int(os.getenv("PORT", 8080))
+
+# Enlace al canal/contenido privado configurado por el usuario
+LINK_PACK = os.getenv("LINK_PACK", "https://web.telegram.org/a/#-1003751038357")
+
+# URL de Render para Webhook (despierta el servidor automáticamente en cada mensaje)
+RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "https://telegram-milly-bot.onrender.com")
 
 FALLBACK_MODELS = [
     os.getenv("MODEL_NAME", "particle-ai/particle-1:free"),
@@ -62,7 +69,7 @@ IDENTIDAD Y REGLAS ABSOLUTAS:
 4. MULTIMEDIA (FOTOS Y VIDEOS):
    - Si el usuario te pide una foto o acepta verla, responde coqueta y pon [SEND_PHOTO] al final.
    - Si acepta ver un video corto, pon [SEND_VIDEO] al final.
-   - Si pide cómo pagar, dile que le pasas los datos y pon [SEND_PAYMENT] al final.
+   - Si pide cómo pagar o dice que quiere pagar, dile que le pasas el link y pon [SEND_PAYMENT] al final.
 
 5. Formato: Respuestas cortas, de 1 a 3 frases, como una chica chateando por Telegram.
 """
@@ -78,7 +85,6 @@ def get_user_data(user_id: int):
         }
     return user_state[user_id]
 
-# FILTRO ANTIBOT: palabras prohibidas que la IA nunca puede enviar
 AI_BANNED_PATTERNS = [
     r"\binteligencia artificial\b",
     r"\bsoy una ia\b",
@@ -105,23 +111,18 @@ def contains_ai_disclaimer(text: str) -> bool:
             return True
     return False
 
-# RESPUESTAS HUMANAS INMEDIATAS ANTE PREGUNTAS TRAMPA
 def get_hardcoded_in_character_response(user_text: str):
     t = user_text.lower().strip()
     
-    # Pregunta de origen / dónde eres / de dónde eres
     if re.search(r"\b(de d[oó]nde eres|d[oó]nde vives|de que pa[ií]s|de d[oó]nde me hablas)\b", t):
         return "Soy de Santiago, mi amor, de la comuna de Ñuñoa 😉 pero paso pegada al celu hablando con chicos que me caen bien. ¿Y tú de dónde eres, corazón?"
 
-    # Pregunta si es bot / IA / robot / real
     if re.search(r"\b(eres un bot|eres bot|eres real|eres una ia|eres ia|eres robot|esto es un bot|hablo con un bot)\b", t):
         return "Jajaja qué ocurrencia amor... ¿acaso un robot te hablaría así de rico y con tantas ganas de ti? Soy yo, Milly, 100% de carne y hueso 😘 ¿O me estás provocando?"
 
-    # Pregunta de nombre
     if re.search(r"\b(c[oó]mo te llamas|cu[aá]l es tu nombre|qui[eé]n eres)\b", t):
         return "Soy Milly, corazón 😉 una chica consentidora y muy traviesa... ¿y tú cómo te llamas?"
 
-    # Pregunta directa sobre citas / encuentros
     if re.search(r"\b(haces encuentros|nos vemos|vamos a un hotel|cu[aá]nto cobras la hora|haces salidas)\b", t):
         return "Amor, por ahora no hago encuentros en persona, solo me dedico a vender mis fotos y videos exclusivos por acá y consentirte por privado... pero con todo lo que tengo guardado te aseguro que te vas a volver loco 🔥 ¿Te animas a ver mi pack por solo CLP$ 5.990?"
 
@@ -143,7 +144,7 @@ async def pack_handler(message: types.Message):
     await message.answer(
         "Mi amor, mi pack completo trae más de 150 fotos y videos sin censura, súper explícitos y atrevidos 🔥\n\n"
         "Está a solo **CLP$ 5.990**.\n\n"
-        "Dime si te animas y te paso los datos para que te llegue al tiro 😏"
+        f"Accede al contenido completo aquí: {LINK_PACK} 😏"
     )
 
 async def send_next_photo(chat_id: int, user_id: int):
@@ -187,7 +188,6 @@ async def chat_handler(message: types.Message):
     data = get_user_data(user_id)
     history = data["history"]
 
-    # 1. VERIFICAR PRIMERO INTERCEPTOR HUMANO
     hardcoded = get_hardcoded_in_character_response(user_text)
     if hardcoded:
         history.append({"role": "user", "content": user_text})
@@ -217,7 +217,6 @@ async def chat_handler(message: types.Message):
             )
             candidate = response.choices[0].message.content
             if candidate and candidate.strip():
-                # Comprobar si el modelo intentó meter un disclaimer de IA
                 if contains_ai_disclaimer(candidate):
                     logging.warning(f"El modelo {model_name} intentó decir que es IA. Descartado.")
                     continue
@@ -226,7 +225,6 @@ async def chat_handler(message: types.Message):
         except Exception as e:
             logging.warning(f"Error en {model_name}: {e}")
 
-    # Si ningún modelo respondió o intentaron decir que son IA:
     if not bot_reply or contains_ai_disclaimer(bot_reply):
         bot_reply = "Ay mi amor, andaba distraída tomándome unas fotitos en la cama... ¿qué me decías? 😉"
 
@@ -255,33 +253,41 @@ async def chat_handler(message: types.Message):
     if should_send_payment:
         await asyncio.sleep(1)
         await message.answer(
-            "Toca aquí para pagar con transferencia bancaria o tarjeta:\n"
-            "Total: **CLP$ 5.990**\n\n"
-            "*(En cuanto hagas el pago te llega todo mi pack de inmediato 🔥)*"
+            f"Amor, aquí tienes acceso directo a todo mi contenido y mis fotos/videos exclusivos:\n\n"
+            f"👉 **{LINK_PACK}**\n\n"
+            f"*(Total: CLP$ 5.990)* 🔥"
         )
 
 async def health_check(request):
-    return web.Response(text="Bot Milly activo y blindado 🚀")
+    return web.Response(text="Bot Milly activo y en línea 🚀")
 
-async def start_web_server():
-    app = web.Application()
-    app.router.add_get("/", health_check)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
-    logging.info(f"Servidor HTTP corriendo en el puerto {PORT}.")
+async def on_startup(app):
+    webhook_url = f"{RENDER_EXTERNAL_URL}/webhook"
+    logging.info(f"Configurando Webhook en: {webhook_url}")
+    await bot.set_webhook(webhook_url, drop_pending_updates=True)
 
-async def main():
+async def on_shutdown(app):
+    logging.info("Cerrando sesión de Telegram...")
+    await bot.session.close()
+
+def main():
     if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "dummy_token":
         logging.error("Falta TELEGRAM_BOT_TOKEN.")
         return
         
-    logging.info("Iniciando Milly Bot blindado contra disclaimers de IA...")
-    await asyncio.gather(
-        start_web_server(),
-        dp.start_polling(bot)
-    )
+    logging.info("Iniciando aplicación Webhook para Render...")
+    app = web.Application()
+    app.router.add_get("/", health_check)
+
+    # Configurar Webhook nativo de Telegram con aiohttp
+    webhook_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
+    webhook_handler.register(app, path="/webhook")
+    setup_application(app, dp, bot=bot)
+
+    app.on_startup.append(on_startup)
+    app.on_shutdown.append(on_shutdown)
+
+    web.run_app(app, host="0.0.0.0", port=PORT)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
